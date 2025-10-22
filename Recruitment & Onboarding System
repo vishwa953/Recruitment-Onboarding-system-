@@ -1,0 +1,330 @@
+import java.time.LocalDateTime; import java.time.format.DateTimeFormatter; import java.util.*; 
+import java.util.concurrent.atomic.AtomicInteger; 
+ 
+public class RecruitmentOnboardingSystem {     public static void main(String[] args) {         ConsoleApp app = new ConsoleApp();         app.run(); 
+    } 
+ 
+    // ---------------- Console Application ----------------     static class ConsoleApp { 
+        private final Scanner sc = new Scanner(System.in); 
+        private final Service srv = new Service(); 
+        private final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"); 
+ 
+        void run() {             seedData();             boolean running = true;             while (running) {                 printMenu(); 
+                String choice = sc.nextLine().trim();                 switch (choice) {                     case "1": addJob(); break;                     case "2": addApplicant(); break;                     case "3": applyForJob(); break;                     case "4": scheduleInterview(); break;                     case "5": issueOffer(); break;                     case "6": respondToOffer(); break;                     case "7": createOnboardingTasks(); break;                     case "8": convertToEmployee(); break; 
+                    case "9": running = false; System.out.println("Exiting..."); break;                     default: System.out.println("Invalid choice"); 
+                } 
+            } 
+        } 
+ 
+        void printMenu() { 
+            System.out.println("\n--- Recruitment & Onboarding System ---"); 
+            System.out.println("1. Add Job"); 
+            System.out.println("2. Add Applicant"); 
+            System.out.println("3. Apply"); 
+            System.out.println("4. Schedule Interview"); 
+            System.out.println("5. Issue Offer"); 
+            System.out.println("6. Accept / Reject Offer"); 
+            System.out.println("7. Create Onboarding Tasks"); 
+            System.out.println("8. Convert to Employee"); 
+            System.out.println("9. Exit"); 
+            System.out.print("Choice: "); 
+        } 
+ 
+        void addJob() { 
+            System.out.print("Job Title: "); 
+            String title = nonEmptyString(); 
+            System.out.print("Department: "); 
+            String dept = nonEmptyString(); 
+            JobPosting j = srv.addJob(title, dept); 
+            System.out.println("Job added. ID: " + j.getJobId()); 
+        } 
+ 
+        void addApplicant() { 
+            System.out.print("Applicant name: "); String name = nonEmptyString(); 
+            System.out.print("Email: "); String email = nonEmptyEmail(); 
+            System.out.print("Phone: "); String phone = nonEmptyString(); 
+            Applicant a = srv.addApplicant(name, email, phone); 
+            System.out.println("Applicant added. ID: " + a.getApplicantId()); 
+        } 
+ 
+        void applyForJob() { 
+            System.out.print("Applicant ID: "); int aid = readInt();             System.out.print("Job ID: "); int jid = readInt();             try { 
+                Application app = srv.createApplication(aid, jid); 
+                System.out.println("Application submitted. Application ID: " + app.getAppId()); 
+            } catch (IllegalArgumentException ex) { 
+                System.out.println("Could not apply: " + ex.getMessage()); 
+            } 
+        } 
+ 
+        void scheduleInterview() { 
+            System.out.print("Application ID: "); int appId = readInt();             Application application = srv.findApplication(appId); 
+            if (application == null) { System.out.println("Application not found"); return; } 
+            if (!application.isActiveForInterview()) { System.out.println("Interviews can be scheduled only for applications in APPLIED or INTERVIEW status. Current: " + application.getStatus()); return; } 
+            System.out.print("Interview date/time (yyyy-MM-dd HH:mm): ");             LocalDateTime dt; 
+            try { dt = LocalDateTime.parse(sc.nextLine().trim(), dtf); } 
+            catch (Exception e) { System.out.println("Invalid date format"); return; } 
+            System.out.print("Interviewer name: "); String interviewer = nonEmptyString(); 
+            Interview iv = srv.scheduleInterview(appId, dt, interviewer); 
+            System.out.println("Interview scheduled. ID: " + iv.getInterviewId()); 
+        } 
+ 
+        void issueOffer() { 
+            System.out.print("Application ID: "); int appId = readInt();             Application application = srv.findApplication(appId); 
+            if (application == null) { System.out.println("Application not found"); return; } 
+            if (!application.hasSuccessfulInterview()) { System.out.println("Offer can be issued only after a passed interview."); return; } 
+            System.out.print("Offered salary: "); double sal = readDouble(); 
+            Offer off = srv.issueOffer(appId, sal); 
+            System.out.println("Offer issued. Offer ID: " + off.getOfferId());             System.out.println(off); 
+        } 
+ 
+        void respondToOffer() { 
+            System.out.print("Offer ID: "); int oid = readInt();             Offer offer = srv.findOffer(oid); 
+            if (offer == null) { System.out.println("Offer not found"); return; } 
+            if (offer.getStatus() != OfferStatus.ISSUED) { System.out.println("Offer already responded: " + offer.getStatus()); return; } 
+            System.out.print("Accept or Reject (A/R): "); String r = sc.nextLine().trim();             if (r.equalsIgnoreCase("A")) {                 srv.acceptOffer(oid); 
+                System.out.println("Offer accepted. Application status: " + offer.getApplication().getStatus()); 
+            } else if (r.equalsIgnoreCase("R")) {                 srv.rejectOffer(oid);                 System.out.println("Offer rejected."); 
+            } else System.out.println("Invalid choice"); 
+        } 
+ 
+        void createOnboardingTasks() { 
+            System.out.print("Application ID: "); int appId = readInt();             Application application = srv.findApplication(appId); 
+            if (application == null) { System.out.println("Application not found"); return; } 
+            if (application.getStatus() != ApplicationStatus.ONBOARDING) { System.out.println("Onboarding tasks can only be created for applications in ONBOARDING status. Current: " + application.getStatus()); return; } 
+            System.out.println("Enter tasks one per line. Blank line to finish.");             List<String> tasks = new ArrayList<>();             while (true) { 
+                System.out.print("Task: ");                 String t = sc.nextLine();                 if (t.trim().isEmpty()) break;                 tasks.add(t.trim()); 
+            } 
+            if (tasks.isEmpty()) { System.out.println("No tasks provided"); return; }             srv.createOnboardingTasks(appId, tasks);             System.out.println("Onboarding tasks created.");             srv.printOnboardingTasks(appId); 
+        } 
+ 
+        void convertToEmployee() { 
+            System.out.print("Application ID: "); int appId = readInt();             try { 
+                Employee emp = srv.convertToEmployee(appId); 
+                System.out.println("Employee created: " + emp); 
+            } catch (IllegalArgumentException ex) { System.out.println("Cannot convert: " + ex.getMessage()); } 
+        } 
+ 
+        // ---------- helpers ---------- 
+        String nonEmptyString() { 
+            while (true) { 
+                String s = sc.nextLine().trim();                 if (!s.isEmpty()) return s; 
+                System.out.print("Value cannot be empty. Try again: "); 
+            } 
+        } 
+ 
+        String nonEmptyEmail() {             while (true) { 
+                String s = sc.nextLine().trim(); 
+                if (s.isEmpty()) { System.out.print("Email cannot be empty. Try again: "); continue; } 
+                if (!s.contains("@") || !s.contains(".")) { System.out.print("Invalid email. Try again: "); continue; }                 return s; 
+            } 
+        } 
+ 
+        int readInt() {             while (true) { 
+                String s = sc.nextLine().trim(); 
+                try { return Integer.parseInt(s); } catch (Exception e) { System.out.print("Enter a valid integer: "); 
+} 
+            } 
+        } 
+ 
+        double readDouble() {             while (true) { 
+                String s = sc.nextLine().trim(); 
+                try { return Double.parseDouble(s); } catch (Exception e) { System.out.print("Enter a valid number: "); } 
+            } 
+        } 
+ 
+        void seedData() { 
+            JobPosting j = srv.addJob("Software Engineer", "IT"); 
+            Applicant a = srv.addApplicant("Priya", "priya@example.com", "9876543210"); 
+try { 
+                Application app = srv.createApplication(a.getApplicantId(), j.getJobId()); 
+                // schedule a passed interview to allow issuing offer later in sample run 
+                Interview iv = srv.scheduleInterview(app.getAppId(), LocalDateTime.now().minusDays(1), 
+"Interviewer A"); 
+                srv.updateInterviewResult(iv.getInterviewId(), InterviewResult.PASSED);             } catch (Exception ignored) {} 
+        } 
+    } 
+ 
+    // ---------------- Service Layer: manages entities & business rules ----------------     static class Service { 
+        private final Map<Integer, JobPosting> jobs = new HashMap<>();         private final Map<Integer, Applicant> applicants = new HashMap<>();         private final Map<Integer, Application> applications = new HashMap<>();         private final Map<Integer, Interview> interviews = new HashMap<>();         private final Map<Integer, Offer> offers = new HashMap<>();         private final Map<Integer, Employee> employees = new HashMap<>(); 
+ 
+        private final AtomicInteger jobSeq = new AtomicInteger(1);         private final AtomicInteger applicantSeq = new AtomicInteger(1);         private final AtomicInteger appSeq = new AtomicInteger(1);         private final AtomicInteger interviewSeq = new AtomicInteger(1);         private final AtomicInteger offerSeq = new AtomicInteger(1);         private final AtomicInteger empSeq = new AtomicInteger(1);         private final AtomicInteger taskSeq = new AtomicInteger(1); 
+ 
+        // ---- Job ---- 
+        public JobPosting addJob(String title, String department) {             int id = jobSeq.getAndIncrement(); 
+            JobPosting j = new JobPosting(id, title, department);             jobs.put(id, j);             return j; 
+        } 
+ 
+        // ---- Applicant ---- 
+        public Applicant addApplicant(String name, String email, String phone) {             int id = applicantSeq.getAndIncrement(); 
+            Applicant a = new Applicant(id, name, email, phone);             applicants.put(id, a);             return a; 
+        } 
+ 
+        // ---- Application ---- 
+        public Application createApplication(int applicantId, int jobId) {             Applicant ap = applicants.get(applicantId); 
+            if (ap == null) throw new IllegalArgumentException("Applicant not found");             JobPosting job = jobs.get(jobId); 
+            if (job == null) throw new IllegalArgumentException("Job posting not found");             if (!job.isOpen()) throw new IllegalArgumentException("Job is not open");             int id = appSeq.getAndIncrement(); 
+            Application application = new Application(id, ap, job);             applications.put(id, application);             job.addApplication(application);             return application; 
+        } 
+ 
+        public Application findApplication(int id) { return applications.get(id); } 
+ 
+        // ---- Interview ---- 
+        public Interview scheduleInterview(int applicationId, LocalDateTime when, String interviewer) {             Application app = applications.get(applicationId); 
+            if (app == null) throw new IllegalArgumentException("Application not found"); 
+            if (!app.isActiveForInterview()) throw new IllegalArgumentException("Interviews can be scheduled only for applications in APPLIED or INTERVIEW status");             int id = interviewSeq.getAndIncrement(); 
+            Interview iv = new Interview(id, app, when, interviewer);             interviews.put(id, iv);             app.addInterview(iv); 
+            app.setStatus(ApplicationStatus.INTERVIEW); 
+return iv; 
+        } 
+ 
+        public void updateInterviewResult(int interviewId, InterviewResult result) {             Interview iv = interviews.get(interviewId); 
+            if (iv == null) throw new IllegalArgumentException("Interview not found");             iv.setResult(result); 
+            // if passed -> keep app in INTERVIEW (eligible for offer), if failed and no other passed interviews remain -> back to APPLIED or rejected 
+            Application app = iv.getApplication(); 
+            if (result == InterviewResult.PASSED) app.setStatus(ApplicationStatus.INTERVIEW);             else { 
+                boolean anyPassed = app.getInterviews().stream().anyMatch(i -> i.getResult() == InterviewResult.PASSED); 
+                if (!anyPassed) app.setStatus(ApplicationStatus.APPLIED); 
+            } 
+        } 
+ 
+        // ---- Offer ---- 
+        public Offer issueOffer(int applicationId, double salary) {             Application app = applications.get(applicationId); 
+            if (app == null) throw new IllegalArgumentException("Application not found"); 
+            if (!app.hasSuccessfulInterview()) throw new IllegalArgumentException("Offer can be issued only after a passed interview"); 
+            int id = offerSeq.getAndIncrement();             Offer off = new Offer(id, app, salary);             offers.put(id, off);             app.setOffer(off); 
+            app.setStatus(ApplicationStatus.OFFER);             return off; 
+        } 
+ 
+        public Offer findOffer(int id) { return offers.get(id); } 
+ 
+        public void acceptOffer(int offerId) { 
+Offer off = offers.get(offerId);             if (off == null) throw new IllegalArgumentException("Offer not found"); 
+            if (off.getStatus() != OfferStatus.ISSUED) throw new IllegalArgumentException("Offer already responded"); 
+            off.setStatus(OfferStatus.ACCEPTED);             Application app = off.getApplication();             app.setStatus(ApplicationStatus.ONBOARDING); 
+            // create default empty tasks list (actual tasks created later) 
+        } 
+ 
+        public void rejectOffer(int offerId) {             Offer off = offers.get(offerId); 
+            if (off == null) throw new IllegalArgumentException("Offer not found");             off.setStatus(OfferStatus.REJECTED);             Application app = off.getApplication();             app.setStatus(ApplicationStatus.APPLIED);             app.setOffer(null); 
+        } 
+ 
+        // ---- Onboarding ---- 
+        public void createOnboardingTasks(int applicationId, List<String> tasks) {             Application app = applications.get(applicationId); 
+            if (app == null) throw new IllegalArgumentException("Application not found");             if (app.getStatus() != ApplicationStatus.ONBOARDING) throw new IllegalArgumentException("Application not in ONBOARDING status");             for (String t : tasks) { 
+                int id = taskSeq.getAndIncrement(); 
+                OnboardingTask ot = new OnboardingTask(id, t);                 app.addOnboardingTask(ot); 
+            } 
+        } 
+ 
+        public void printOnboardingTasks(int applicationId) {             Application app = applications.get(applicationId); 
+            if (app == null) throw new IllegalArgumentException("Application not found"); System.out.println("Onboarding tasks for application " + applicationId + ":");             if (app.getOnboardingTasks().isEmpty()) { System.out.println("(none)"); return; }             app.getOnboardingTasks().forEach(t -> System.out.println("  " + t)); 
+        } 
+ 
+        // Mark single task complete (optional helper) 
+        public void completeOnboardingTask(int applicationId, int taskId) {             Application app = applications.get(applicationId); 
+            if (app == null) throw new IllegalArgumentException("Application not found"); 
+            OnboardingTask t = app.getOnboardingTasks().stream().filter(x -> x.getTaskId() == taskId).findFirst().orElse(null); 
+            if (t == null) throw new IllegalArgumentException("Task not found"); 
+            t.setCompleted(true); 
+        } 
+ 
+        // ---- Convert to Employee ---- 
+        public Employee convertToEmployee(int applicationId) {             Application app = applications.get(applicationId); 
+            if (app == null) throw new IllegalArgumentException("Application not found"); 
+            if (app.getStatus() != ApplicationStatus.ONBOARDING) throw new IllegalArgumentException("Application not in ONBOARDING status"); 
+            if (app.getOnboardingTasks().isEmpty()) throw new IllegalArgumentException("No onboarding tasks created yet"); 
+            boolean allDone = app.getOnboardingTasks().stream().allMatch(OnboardingTask::isCompleted);             if (!allDone) throw new IllegalArgumentException("All onboarding tasks must be completed before conversion"); 
+            Offer off = app.getOffer(); 
+            if (off == null || off.getStatus() != OfferStatus.ACCEPTED) throw new IllegalArgumentException("Offer must be accepted to convert to employee");             int id = empSeq.getAndIncrement(); 
+            Employee e = new Employee(id, app.getApplicant().getName(), app.getJob().getDepartment(), off.getSalary()); 
+            employees.put(id, e); 
+            app.setStatus(ApplicationStatus.EMPLOYEE);             return e; 
+        } 
+ 
+    } 
+ 
+    // ---------------- Domain Classes ----------------     static class JobPosting {         private final int jobId;         private final String title;         private final String department;         private boolean open = true; 
+        private final List<Application> applications = new ArrayList<>(); 
+ 
+        public JobPosting(int jobId, String title, String department) {             this.jobId = jobId; this.title = title; this.department = department; 
+        } 
+        public int getJobId() { return jobId; }         public String getTitle() { return title; } 
+        public String getDepartment() { return department; }         public boolean isOpen() { return open; }         public void close() { open = false; } 
+        public void addApplication(Application a) { applications.add(a); } 
+        public List<Application> getApplications() { return Collections.unmodifiableList(applications); } 
+        @Override public String toString() { return String.format("Job[id=%d,title=%s,dept=%s,open=%b]", jobId, title, department, open); } 
+    } 
+ 
+    static class Applicant {         private final int applicantId;         private final String name;         private final String email;         private final String phone; 
+ 
+        public Applicant(int applicantId, String name, String email, String phone) { 
+            this.applicantId = applicantId; this.name = name; this.email = email; this.phone = phone; 
+        } 
+        public int getApplicantId() { return applicantId; } 
+public String getName() { return name; } public String getEmail() { return email; } 
+        @Override public String toString() { return String.format("Applicant[id=%d,name=%s,email=%s]", applicantId, name, email); } 
+    } 
+ 
+    enum ApplicationStatus { APPLIED, INTERVIEW, OFFER, ONBOARDING, EMPLOYEE } 
+ 
+    static class Application {         private final int appId;         private final Applicant applicant;         private final JobPosting job; 
+        private ApplicationStatus status = ApplicationStatus.APPLIED;         private final List<Interview> interviews = new ArrayList<>();         private Offer offer; 
+        private final List<OnboardingTask> onboardingTasks = new ArrayList<>(); 
+ 
+        public Application(int appId, Applicant applicant, JobPosting job) {             this.appId = appId; this.applicant = applicant; this.job = job; }         public int getAppId() { return appId; } 
+        public Applicant getApplicant() { return applicant; }         public JobPosting getJob() { return job; }         public ApplicationStatus getStatus() { return status; }         public void setStatus(ApplicationStatus s) { this.status = s; }         public void addInterview(Interview i) { interviews.add(i); } 
+        public List<Interview> getInterviews() { return Collections.unmodifiableList(interviews); }         public void setOffer(Offer o) { this.offer = o; }         public Offer getOffer() { return offer; } 
+        public void addOnboardingTask(OnboardingTask t) { onboardingTasks.add(t); } 
+        public List<OnboardingTask> getOnboardingTasks() { return Collections.unmodifiableList(onboardingTasks); } 
+ 
+        // business helpers 
+        public boolean isActiveForInterview() { 
+            return status == ApplicationStatus.APPLIED || status == ApplicationStatus.INTERVIEW; 
+} 
+public boolean hasSuccessfulInterview() { 
+            return interviews.stream().anyMatch(i -> i.getResult() == InterviewResult.PASSED); 
+        } 
+ 
+        @Override public String toString() { return 
+String.format("Application[id=%d,applicant=%s,job=%s,status=%s]", appId, applicant.getName(), job.getTitle(), status); } 
+    } 
+ 
+    enum InterviewResult { PENDING, PASSED, FAILED } 
+ 
+    static class Interview {         private final int interviewId;         private final Application application;         private final LocalDateTime dateTime;         private final String interviewer; 
+        private InterviewResult result = InterviewResult.PENDING; 
+ 
+        public Interview(int interviewId, Application application, LocalDateTime dateTime, String interviewer) { 
+            this.interviewId = interviewId; this.application = application; this.dateTime = dateTime; this.interviewer = interviewer; } 
+        public int getInterviewId() { return interviewId; }         public Application getApplication() { return application; }         public LocalDateTime getDateTime() { return dateTime; }         public InterviewResult getResult() { return result; }         public void setResult(InterviewResult r) { this.result = r; } 
+        @Override public String toString() { return 
+String.format("Interview[id=%d,appId=%d,date=%s,interviewer=%s,result=%s]", interviewId, application.getAppId(), dateTime.toString(), interviewer, result); } 
+    } 
+ 
+    enum OfferStatus { ISSUED, ACCEPTED, REJECTED } 
+ 
+    static class Offer { 
+private final int offerId; private final Application application; 
+        private final double salary; 
+        private OfferStatus status = OfferStatus.ISSUED; 
+ 
+        public Offer(int offerId, Application application, double salary) { this.offerId = offerId; this.application 
+= application; this.salary = salary; }         public int getOfferId() { return offerId; } 
+        public Application getApplication() { return application; }         public double getSalary() { return salary; }         public OfferStatus getStatus() { return status; }         public void setStatus(OfferStatus s) { this.status = s; } 
+        @Override public String toString() { return 
+String.format("Offer[id=%d,appId=%d,salary=%.2f,status=%s]", offerId, application.getAppId(), salary, status); } 
+    } 
+ 
+    static class OnboardingTask {         private final int taskId;         private final String description;         private boolean completed = false; 
+        public OnboardingTask(int taskId, String description) { this.taskId = taskId; this.description = description; } 
+        public int getTaskId() { return taskId; } 
+        public String getDescription() { return description; }         public boolean isCompleted() { return completed; }         public void setCompleted(boolean c) { this.completed = c; } 
+        @Override public String toString() { return String.format("Task[id=%d,desc=%s,done=%b]", taskId, description, completed); } 
+    } 
+ 
+    static class Employee {         private final int empId;         private final String name;         private final String department;         private final double salary; public Employee(int empId, String name, String department, double salary) { this.empId = empId; 
+this.name = name; this.department = department; this.salary = salary; } 
+        @Override public String toString() { return 
+String.format("Employee[id=%d,name=%s,dept=%s,sal=%.2f]", empId, name, department, salary); } 
+    } 
+} 
